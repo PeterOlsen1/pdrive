@@ -1,0 +1,6 @@
+CREATE TABLE IF NOT EXISTS photos (
+    id TEXT PRIMARY KEY,
+    filename TEXT NOT NULL,
+    path TEXT NOT NULL,
+    uploaded_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
