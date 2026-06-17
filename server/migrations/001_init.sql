@@ -1,6 +1,7 @@
-CREATE TABLE IF NOT EXISTS photos (
+CREATE TABLE IF NOT EXISTS media (
     id TEXT PRIMARY KEY,
     filename TEXT NOT NULL,
     path TEXT NOT NULL,
+    mime_type TEXT NOT NULL,
     uploaded_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
