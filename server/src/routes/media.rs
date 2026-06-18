@@ -1,11 +1,11 @@
 use axum::{
-    self, Json, Router, extract::{Multipart, State, Path}, http::StatusCode, routing::{post, get}
+    self, Json, Router, body::Body, extract::{Multipart, Path, State}, http::{HeaderMap, HeaderValue, StatusCode, header}, response::Response, routing::{get, post}
 };
-use serde::{Serialize, Deserialize};
-use uuid::Uuid;
+use serde::{Deserialize, Serialize};
 use sqlx::Row;
+use uuid::Uuid;
 
-use crate::state::AppState;
+use crate::{db::Media, state::AppState};
 
 #[derive(Serialize)]
 struct PostUploadResponse {
@@ -33,30 +33,27 @@ pub fn router() -> Router<AppState> {
 async fn get_media(
     State(state): State<AppState>,
     Path(id): Path<String>,
-) -> Result<Json<GetMediaResponse>, StatusCode> {
-    let row = sqlx::query(
-        "SELECT * FROM media WHERE ID = ?",
-    )
-    .bind(&id)
-    .fetch_optional(&state.pool)
-    .await
-    .unwrap();
+) -> Result<Response, StatusCode> {
+    // TODO: update to query_as to get the struct
+    let row = sqlx::query("SELECT * FROM media WHERE ID = ?")
+        .bind(&id)
+        .fetch_optional(&state.pool)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    match row {
-        Some(row) => {
-            let id: String = row.get("id");
-            let filename: String = row.get("filename");
-            let mime_type: String = row.get("mime_type");
-            let path: String = row.get("path");
+    let row = row.ok_or(StatusCode::NOT_FOUND)?;
 
-            // build response
-            let bytes = tokio::fs::read(&path).await.unwrap();
-            return Err(StatusCode::NOT_IMPLEMENTED)
-        }
-        None => {
-            return Err(StatusCode::NOT_FOUND);
-        }
-    }
+    let mime_type: String = row.try_get("path").map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let path: String = row.try_get("path").map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    // build response
+    let bytes = tokio::fs::read(&path).await.map_err(|_| StatusCode::NOT_FOUND)?;
+
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, mime_type)
+        .body(Body::from(bytes))
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
 async fn upload_media(
@@ -71,22 +68,20 @@ async fn upload_media(
 
         tokio::fs::write(&path, bytes).await.unwrap();
 
-        sqlx::query(
-            "INSERT INTO media (id, filename, mime_type, path) values (? ? ? ?)"
-        )
-        .bind(&id)
-        .bind(&upload_filename)
-        .bind("image/unknown")
-        .bind(&path)
-        .execute(&state.pool)
-        .await
-        .unwrap();
+        sqlx::query("INSERT INTO media (id, filename, mime_type, path) values (? ? ? ?)")
+            .bind(&id)
+            .bind(&upload_filename)
+            .bind("image/unknown")
+            .bind(&path)
+            .execute(&state.pool)
+            .await
+            .unwrap();
 
         return Ok(Json(PostUploadResponse {
-            id: "yo".to_string(),
-            filename: "yo".to_string(),
-            path: "yo".to_string(),
-        }))
+            id,
+            filename: upload_filename,
+            path,
+        }));
     }
 
     Err(StatusCode::BAD_REQUEST)

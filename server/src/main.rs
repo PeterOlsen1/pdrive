@@ -1,5 +1,6 @@
 mod routes;
 mod state;
+mod db;
 
 use axum::{Router, routing::get};
 use dotenvy::dotenv;
@@ -13,7 +14,12 @@ async fn main() {
     dotenv().ok();
 
     let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+    let database_file = env::var("DATABASE_FILE").expect("DATABASE_FILE must be set");
     let upload_directory = env::var("UPLOAD_DIRECTORY").expect("UPLOAD_DIRECTORY must be set");
+
+    tokio::fs::File::create(&database_file)
+        .await
+        .expect("Failed to create database file!");
 
     tokio::fs::create_dir_all(&upload_directory)
         .await
