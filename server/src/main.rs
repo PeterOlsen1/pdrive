@@ -1,6 +1,7 @@
 mod routes;
 mod state;
 mod db;
+mod services;
 
 use axum::{Router, routing::get};
 use dotenvy::dotenv;

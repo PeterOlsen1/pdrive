@@ -1,24 +1,22 @@
 use axum::{
-    self, Json, Router, body::Body, extract::{Multipart, Path, State}, http::{HeaderMap, HeaderValue, StatusCode, header}, response::Response, routing::{get, post}
+    self, Json, Router,
+    body::Body,
+    extract::{Multipart, Path, State},
+    http::{HeaderMap, HeaderValue, StatusCode, header},
+    response::Response,
+    routing::{get, post},
 };
 use serde::{Deserialize, Serialize};
 use sqlx::Row;
 use uuid::Uuid;
 
-use crate::{db::Media, state::AppState};
+use crate::{db::Media, services::{self, storage::read_file}, state::AppState};
 
 #[derive(Serialize)]
 struct PostUploadResponse {
     id: String,
     filename: String,
     path: String,
-}
-
-#[derive(Serialize)]
-struct GetMediaResponse {
-    id: String,
-    filename: String,
-    // add body?
 }
 
 pub fn router() -> Router<AppState> {
@@ -34,15 +32,15 @@ async fn get_media(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Response, StatusCode> {
-    let media = sqlx::query_as::<_, Media>("SELECT * FROM media WHERE ID = ?")
-        .bind(&id)
-        .fetch_optional(&state.pool)
+    let media = services::db::get_media_by_id(state.pool, id)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
         .ok_or(StatusCode::NOT_FOUND)?;
 
     // build response
-    let bytes = tokio::fs::read(&media.path).await.map_err(|_| StatusCode::NOT_FOUND)?;
+    let bytes = read_file(&media.path)
+        .await
+        .map_err(|_| StatusCode::NOT_FOUND)?;
 
     Response::builder()
         .status(StatusCode::OK)
@@ -63,7 +61,7 @@ async fn upload_media(
 
         tokio::fs::write(&path, bytes).await.unwrap();
 
-        sqlx::query("INSERT INTO media (id, filename, mime_type, path) values (? ? ? ?)")
+        sqlx::query("INSERT INTO media (id, filename, mime_type, path) values (?, ?, ?, ?)")
             .bind(&id)
             .bind(&upload_filename)
             .bind("image/unknown")
