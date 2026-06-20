@@ -34,24 +34,19 @@ async fn get_media(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Response, StatusCode> {
-    // TODO: update to query_as to get the struct
-    let row = sqlx::query("SELECT * FROM media WHERE ID = ?")
+    let media = sqlx::query_as::<_, Media>("SELECT * FROM media WHERE ID = ?")
         .bind(&id)
         .fetch_optional(&state.pool)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-    let row = row.ok_or(StatusCode::NOT_FOUND)?;
-
-    let mime_type: String = row.try_get("path").map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    let path: String = row.try_get("path").map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .ok_or(StatusCode::NOT_FOUND)?;
 
     // build response
-    let bytes = tokio::fs::read(&path).await.map_err(|_| StatusCode::NOT_FOUND)?;
+    let bytes = tokio::fs::read(&media.path).await.map_err(|_| StatusCode::NOT_FOUND)?;
 
     Response::builder()
         .status(StatusCode::OK)
-        .header(header::CONTENT_TYPE, mime_type)
+        .header(header::CONTENT_TYPE, &media.mime_type)
         .body(Body::from(bytes))
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
